@@ -39,12 +39,3 @@ jobs:
 
       - name: Build and run tests
         run: ./mvnw verify -Dcheckstyle.skip=false
-
-      - name: Publish test report
-        if: always()
-        uses: dorny/test-reporter@v1
-        with:
-          name: JUnit Test Results
-          path: target/surefire-reports/*.xml
-          reporter: java-junit
-          fail-on-error: false

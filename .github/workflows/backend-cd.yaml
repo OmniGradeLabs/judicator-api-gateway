@@ -42,15 +42,6 @@ jobs:
       - name: Build and run tests
         run: ./mvnw verify -Dcheckstyle.skip=false
 
-      - name: Publish test report
-        if: always()
-        uses: dorny/test-reporter@v1
-        with:
-          name: JUnit Test Results
-          path: target/surefire-reports/*.xml
-          reporter: java-junit
-          fail-on-error: false
-
   # ── Job 2: Build & Push Docker Image ────────────────────────────────────────
   # Only runs if the test job passes. Builds the production Docker image and
   # pushes it to both DockerHub and GHCR.
