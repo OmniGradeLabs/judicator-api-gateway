@@ -66,8 +66,7 @@ jobs:
             TAG="v${GITHUB_RUN_NUMBER}"
             echo "Starting Deployment for Judicator API Gateway Version: $TAG"
 
-            # Đường dẫn mới trên VPS dành cho Judicator
-            SCRIPT_PATH="/root/selfhost/apps/judicator-gateway/script/deploy.sh"
+            SCRIPT_PATH="/root/selfhost/judicator/script/deploy.sh"
 
             if [ -f "$SCRIPT_PATH" ]; then
                 chmod +x $SCRIPT_PATH
