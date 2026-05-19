@@ -8,7 +8,7 @@ import com.judicator.gateway.modules.identity.dto.tenant.response.TenantResponse
 import com.judicator.gateway.modules.identity.entity.Tenant;
 import com.judicator.gateway.modules.identity.enumType.TenantStatus;
 import com.judicator.gateway.modules.identity.mapper.TenantMapper;
-import com.judicator.gateway.modules.identity.repository.TenantRepository;
+import com.judicator.gateway.modules.identity.repository.jpa.TenantRepository;
 import com.judicator.gateway.modules.identity.service.tenant.TenantService;
 import java.util.UUID;
 import lombok.AccessLevel;
