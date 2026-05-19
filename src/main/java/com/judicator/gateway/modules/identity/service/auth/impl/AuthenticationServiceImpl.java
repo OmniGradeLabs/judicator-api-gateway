@@ -4,23 +4,20 @@ import com.judicator.gateway.common.exception.ApiException;
 import com.judicator.gateway.common.exception.ErrorCode;
 import com.judicator.gateway.common.security.config.SessionAuthorityResolver;
 import com.judicator.gateway.infrastructure.cached.redis.model.SessionAuthzCache;
-import com.judicator.gateway.infrastructure.persistence.UuidV7;
+import com.judicator.gateway.modules.identity.document.SessionDoc;
 import com.judicator.gateway.modules.identity.dto.authentication.request.AuthenticationRequest;
 import com.judicator.gateway.modules.identity.dto.authentication.response.UserProfileResponse;
 import com.judicator.gateway.modules.identity.dto.token.request.TokenRequest;
 import com.judicator.gateway.modules.identity.dto.token.response.TokenPair;
-import com.judicator.gateway.modules.identity.entity.Session;
 import com.judicator.gateway.modules.identity.entity.User;
 import com.judicator.gateway.modules.identity.enumType.TenantStatus;
 import com.judicator.gateway.modules.identity.enumType.UserStatus;
-import com.judicator.gateway.modules.identity.repository.SessionRepository;
-import com.judicator.gateway.modules.identity.repository.UserRepository;
+import com.judicator.gateway.modules.identity.repository.jpa.UserRepository;
 import com.judicator.gateway.modules.identity.service.auth.AuthenticationService;
 import com.judicator.gateway.modules.identity.service.auth.SessionService;
 import com.judicator.gateway.modules.identity.service.token.TokenService;
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -52,14 +49,13 @@ public class AuthenticationServiceImpl implements AuthenticationService {
   long accessTokenTtlSeconds;
 
   UserRepository userRepository;
-  SessionRepository sessionRepository;
   PasswordEncoder passwordEncoder;
   TokenService tokenService;
   SessionService sessionService;
   SessionAuthorityResolver sessionAuthorityResolver;
 
   @Override
-  @Transactional
+  @Transactional(readOnly = true)
   public TokenPair authenticate(AuthenticationRequest request) {
     // 1. Resolve user by username
     User user =
@@ -78,49 +74,33 @@ public class AuthenticationServiceImpl implements AuthenticationService {
       throw new ApiException(ErrorCode.FORBIDDEN_ACTION);
     }
 
-    // 4. Create session
-    Session session = sessionService.createSession(user);
+    // 4. Create session in MongoDB
+    SessionDoc sessionDoc = sessionService.createSession(user);
 
     // 5. Issue token pair
     TokenRequest tokenRequest =
         TokenRequest.builder()
             .userId(user.getId())
             .tenantId(user.getTenant().getId())
-            .sessionId(session.getId())
+            .sessionId(sessionDoc.getId())
             .subject(user.getUsername())
-            .refreshJti(session.getRefreshJti())
+            .refreshJti(sessionDoc.getRefreshJti())
             .build();
 
     return tokenService.generateTokenPair(tokenRequest);
   }
 
   @Override
-  @Transactional
   public TokenPair refresh(String refreshToken) {
     if (refreshToken == null || refreshToken.isBlank()) {
       throw new ApiException(ErrorCode.UNAUTHENTICATED);
     }
     TokenRequest extracted = tokenService.extractToken(refreshToken);
-    UUID sessionId = extracted.getSessionId();
-    UUID oldJti = extracted.getRefreshJti();
+    String sessionId = extracted.getSessionId();
+    String oldJti = extracted.getRefreshJti();
 
-    Session session =
-        sessionRepository
-            .findById(sessionId)
-            .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
-
-    if (session.getRevokedAt() != null || session.getExpiredAt().isBefore(LocalDateTime.now())) {
-      throw new ApiException(ErrorCode.UNAUTHENTICATED);
-    }
-    if (!session.getUser().getId().equals(extracted.getUserId())) {
-      throw new ApiException(ErrorCode.UNAUTHENTICATED);
-    }
-
-    UUID newJti = UuidV7.random();
-    int updated = sessionRepository.rotateRefreshJti(sessionId, oldJti, newJti);
-    if (updated != 1) {
-      throw new ApiException(ErrorCode.UNAUTHENTICATED);
-    }
+    // Rotate JTI in MongoDB (validates session is active + JTI matches)
+    String newJti = sessionService.rotateRefreshJti(sessionId, oldJti);
 
     TokenRequest tokenReq =
         TokenRequest.builder()
@@ -132,12 +112,13 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             .build();
 
     String accessToken = tokenService.generateAccessToken(tokenReq);
-    Date refreshExpiry =
-        Date.from(session.getExpiredAt().atZone(ZoneId.systemDefault()).toInstant());
+
+    // Calculate remaining refresh TTL from session expiration
+    Instant sessionExpiry = Instant.now().plusSeconds(refreshableDurationSeconds);
+    Date refreshExpiry = Date.from(sessionExpiry);
     String refreshTokenNew = tokenService.generateRefreshToken(tokenReq, refreshExpiry);
 
-    long refreshTtlRemaining =
-        Math.max(0, Duration.between(LocalDateTime.now(), session.getExpiredAt()).getSeconds());
+    long refreshTtlRemaining = refreshableDurationSeconds;
 
     return TokenPair.builder()
         .accessToken(accessToken)
@@ -148,8 +129,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
   }
 
   @Override
-  @Transactional
-  public void logout(UUID sessionId, UUID userId) {
+  public void logout(String sessionId, UUID userId) {
     if (sessionId == null || userId == null) {
       throw new ApiException(ErrorCode.UNAUTHENTICATED);
     }
@@ -158,13 +138,11 @@ public class AuthenticationServiceImpl implements AuthenticationService {
   }
 
   @Override
-  @Transactional
   public void logoutAll(UUID userId) {
     sessionService.revokeAll(userId);
   }
 
   @Override
-  @Transactional
   public void forceLogout(UUID targetUserId) {
     sessionService.revokeAll(targetUserId);
   }
@@ -179,7 +157,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     Jwt jwt = jwtAuth.getToken();
     UUID userId = UUID.fromString(jwt.getClaimAsString("user_id"));
-    UUID sessionId = UUID.fromString(jwt.getClaimAsString("session_id"));
+    String sessionId = jwt.getClaimAsString("session_id");
     UUID tenantId = UUID.fromString(jwt.getClaimAsString("tenant_id"));
 
     SessionAuthzCache authzCache =

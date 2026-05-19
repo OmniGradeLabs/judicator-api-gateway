@@ -13,7 +13,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── Job 1: Test ──────────────────────────────────────────────────────────────
+  # Runs the full test suite (Testcontainers: PostgreSQL + MongoDB + Redis).
+  # ubuntu-latest has Docker daemon built in; TESTCONTAINERS_RYUK_DISABLED avoids
+  # the need for privileged mode which is not available on standard runners.
+  test:
+    name: Test (Testcontainers)
+    runs-on: ubuntu-latest
+
+    env:
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+      DOCKER_HOST: unix:///var/run/docker.sock
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+
+      - name: Verify Docker is available (required by Testcontainers)
+        run: docker info
+
+      - name: Build and run tests
+        run: ./mvnw verify -Dcheckstyle.skip=false
+
+  # ── Job 2: Build & Push Docker Image ────────────────────────────────────────
+  # Only runs if the test job passes. Builds the production Docker image and
+  # pushes it to both DockerHub and GHCR.
   build-and-push:
+    name: Build & Push Docker Image
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
@@ -49,7 +83,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ── Job 3: Deploy to VPS ─────────────────────────────────────────────────────
+  # SSHes into the VPS and runs the deploy script with the new image tag.
+  # Only runs after the image is successfully built and pushed.
   deploy:
+    name: Deploy to VPS
     needs: build-and-push
     runs-on: ubuntu-latest
 

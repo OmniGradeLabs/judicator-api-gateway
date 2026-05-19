@@ -32,15 +32,14 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
   public AbstractAuthenticationToken convert(Jwt jwt) {
 
     String userIdRaw = jwt.getClaimAsString("user_id");
-    String sessionIdRaw = jwt.getClaimAsString("session_id");
+    String sessionId = jwt.getClaimAsString("session_id");
     Instant exp = jwt.getExpiresAt();
 
-    if (userIdRaw == null || sessionIdRaw == null || exp == null) {
+    if (userIdRaw == null || sessionId == null || exp == null) {
       throw new JwtException("Missing required JWT claims");
     }
 
     UUID userId = UUID.fromString(userIdRaw);
-    UUID sessionId = UUID.fromString(sessionIdRaw);
 
     SessionAuthzCache authz;
 

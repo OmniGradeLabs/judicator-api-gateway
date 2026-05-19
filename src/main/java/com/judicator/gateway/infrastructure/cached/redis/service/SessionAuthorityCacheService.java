@@ -6,7 +6,6 @@ import com.judicator.gateway.infrastructure.cached.redis.keys.RedisKeys;
 import com.judicator.gateway.infrastructure.cached.redis.model.SessionAuthzCache;
 import java.time.Duration;
 import java.util.Optional;
-import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -24,7 +23,7 @@ public class SessionAuthorityCacheService {
   StringRedisTemplate redis;
   ObjectMapper objectMapper;
 
-  public Optional<SessionAuthzCache> get(UUID sessionId) {
+  public Optional<SessionAuthzCache> get(String sessionId) {
     if (sessionId == null) {
       return Optional.empty();
     }
@@ -33,7 +32,7 @@ public class SessionAuthorityCacheService {
     return readRawValue(key).flatMap(this::deserializeSessionAuthz);
   }
 
-  public boolean put(UUID sessionId, SessionAuthzCache value, Duration ttl) {
+  public boolean put(String sessionId, SessionAuthzCache value, Duration ttl) {
     if (sessionId == null || value == null || !isValidTtl(ttl)) {
       return false;
     }
@@ -42,7 +41,7 @@ public class SessionAuthorityCacheService {
     return serialize(value).map(json -> writeValue(key, json, ttl)).orElse(false);
   }
 
-  public boolean markRevoked(UUID sessionId, Duration ttl) {
+  public boolean markRevoked(String sessionId, Duration ttl) {
     if (sessionId == null || !isValidTtl(ttl)) {
       return false;
     }
@@ -57,7 +56,7 @@ public class SessionAuthorityCacheService {
     }
   }
 
-  public boolean isRevoked(UUID sessionId) {
+  public boolean isRevoked(String sessionId) {
     if (sessionId == null) {
       return false;
     }
@@ -71,7 +70,7 @@ public class SessionAuthorityCacheService {
     }
   }
 
-  public boolean markActive(UUID sessionId, Duration ttl) {
+  public boolean markActive(String sessionId, Duration ttl) {
     if (sessionId == null || !isValidTtl(ttl)) {
       return false;
     }
@@ -86,7 +85,7 @@ public class SessionAuthorityCacheService {
     }
   }
 
-  public boolean isActive(UUID sessionId) {
+  public boolean isActive(String sessionId) {
     if (sessionId == null) {
       return false;
     }
@@ -100,7 +99,7 @@ public class SessionAuthorityCacheService {
     }
   }
 
-  public boolean clearActive(UUID sessionId) {
+  public boolean clearActive(String sessionId) {
     if (sessionId == null) {
       return false;
     }
@@ -114,7 +113,7 @@ public class SessionAuthorityCacheService {
     }
   }
 
-  public boolean clearAuthz(UUID sessionId) {
+  public boolean clearAuthz(String sessionId) {
     if (sessionId == null) {
       return false;
     }

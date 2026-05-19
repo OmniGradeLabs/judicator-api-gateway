@@ -105,8 +105,8 @@ public class TokenServiceImpl implements TokenService {
 
       UUID userId = UUID.fromString(claims.getStringClaim("user_id"));
       UUID tenantId = UUID.fromString(claims.getStringClaim("tenant_id"));
-      UUID sessionId = UUID.fromString(claims.getStringClaim("session_id"));
-      UUID jti = UUID.fromString(claims.getJWTID());
+      String sessionId = claims.getStringClaim("session_id");
+      String jti = claims.getJWTID();
       String subject = claims.getSubject();
 
       if (subject == null || subject.isBlank()) {
@@ -129,11 +129,11 @@ public class TokenServiceImpl implements TokenService {
   private JWTClaimsSet buildClaims(
       UUID userId,
       UUID tenantId,
-      UUID sessionId,
+      String sessionId,
       String subject,
       long ttlSeconds,
       String tokenType,
-      UUID refreshJti) {
+      String refreshJti) {
 
     Instant now = Instant.now();
 
@@ -144,7 +144,7 @@ public class TokenServiceImpl implements TokenService {
             .expirationTime(Date.from(now.plusSeconds(ttlSeconds)))
             .claim("user_id", userId.toString())
             .claim("tenant_id", tenantId.toString())
-            .claim("session_id", sessionId.toString());
+            .claim("session_id", sessionId);
 
     if (tokenType != null) {
       builder.claim("typ", tokenType);
@@ -153,7 +153,7 @@ public class TokenServiceImpl implements TokenService {
       if (refreshJti == null) {
         throw new ApiException(ErrorCode.UNEXPECTED_ERROR);
       }
-      builder.jwtID(refreshJti.toString());
+      builder.jwtID(refreshJti);
     } else {
       builder.jwtID(UuidV7.random().toString());
     }
@@ -164,11 +164,11 @@ public class TokenServiceImpl implements TokenService {
   private JWTClaimsSet buildClaims(
       UUID userId,
       UUID tenantId,
-      UUID sessionId,
+      String sessionId,
       String subject,
       Date expirationTime,
       String tokenType,
-      UUID refreshJti) {
+      String refreshJti) {
 
     Instant now = Instant.now();
 
@@ -179,7 +179,7 @@ public class TokenServiceImpl implements TokenService {
             .expirationTime(expirationTime)
             .claim("user_id", userId.toString())
             .claim("tenant_id", tenantId.toString())
-            .claim("session_id", sessionId.toString());
+            .claim("session_id", sessionId);
 
     if (tokenType != null) {
       builder.claim("typ", tokenType);
@@ -189,7 +189,7 @@ public class TokenServiceImpl implements TokenService {
       if (refreshJti == null) {
         throw new ApiException(ErrorCode.UNEXPECTED_ERROR);
       }
-      builder.jwtID(refreshJti.toString());
+      builder.jwtID(refreshJti);
     } else {
       builder.jwtID(UuidV7.random().toString());
     }

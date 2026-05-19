@@ -1,4 +1,4 @@
-package com.judicator.gateway.modules.identity.repository;
+package com.judicator.gateway.modules.identity.repository.jpa;
 
 import com.judicator.gateway.modules.identity.entity.Role;
 import java.util.List;

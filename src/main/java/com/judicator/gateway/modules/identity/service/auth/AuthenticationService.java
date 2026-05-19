@@ -10,7 +10,7 @@ public interface AuthenticationService {
 
   TokenPair refresh(String refreshToken);
 
-  void logout(UUID sessionId, UUID userId);
+  void logout(String sessionId, UUID userId);
 
   void logoutAll(UUID userId);
 

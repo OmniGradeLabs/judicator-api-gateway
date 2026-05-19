@@ -1,12 +1,14 @@
 package com.judicator.gateway;
 
-import org.junit.jupiter.api.Disabled;
+import com.judicator.gateway.config.BaseIntegrationTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@Disabled("Covered by Testcontainers")
-@SpringBootTest
-class JudicatorApiGatewayApplicationTests {
+/**
+ * Smoke test: boots the full Spring context (including Flyway migrations) against live
+ * Testcontainers. If the context loads without exception the entire configuration, bean wiring, and
+ * DB schema are valid.
+ */
+class JudicatorApiGatewayApplicationTests extends BaseIntegrationTest {
 
   @Test
   void contextLoads() {}

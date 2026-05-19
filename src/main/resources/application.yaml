@@ -39,6 +39,8 @@ spring:
       host: ${SPRING_DATA_REDIS_HOST}
       port: ${SPRING_DATA_REDIS_PORT}
       timeout: ${SPRING_DATA_REDIS_TIMEOUT}
+    mongodb:
+      uri: ${SPRING_DATA_MONGODB_URI}
 
 jwt:
   signer-key-base64: ${JWT_SIGNER_KEY_BASE64}

@@ -34,17 +34,17 @@ public final class RedisKeys {
     }
   }
 
-  public static String sessionRevoked(UUID sessionId) {
+  public static String sessionRevoked(String sessionId) {
     requireNonBlank(sessionId, "sessionId");
     return SESS_REVOKED + sessionId;
   }
 
-  public static String sessionAuthz(UUID sessionId) {
+  public static String sessionAuthz(String sessionId) {
     requireNonBlank(sessionId, "sessionId");
     return SESS_AUTHZ + sessionId;
   }
 
-  public static String sessionActive(UUID sessionId) {
+  public static String sessionActive(String sessionId) {
     requireNonBlank(sessionId, "sessionId");
     return SESS_ACTIVE + sessionId;
   }
