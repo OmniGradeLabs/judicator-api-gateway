@@ -262,7 +262,7 @@ public class AuthenticationController {
       })
   public ResponseEntity<ApiResponse<Void>> logout(@AuthenticationPrincipal Jwt jwt) {
 
-    UUID sessionId = UUID.fromString(jwt.getClaimAsString("session_id"));
+    String sessionId = jwt.getClaimAsString("session_id");
     UUID userId = UUID.fromString(jwt.getClaimAsString("user_id"));
 
     authenticationService.logout(sessionId, userId);

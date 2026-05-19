@@ -4,12 +4,12 @@ import com.judicator.gateway.common.exception.ApiException;
 import com.judicator.gateway.common.exception.ErrorCode;
 import com.judicator.gateway.infrastructure.cached.redis.service.SessionAuthorityCacheService;
 import com.judicator.gateway.infrastructure.persistence.UuidV7;
-import com.judicator.gateway.modules.identity.entity.Session;
+import com.judicator.gateway.modules.identity.document.SessionDoc;
 import com.judicator.gateway.modules.identity.entity.User;
-import com.judicator.gateway.modules.identity.repository.SessionRepository;
+import com.judicator.gateway.modules.identity.repository.mongo.SessionMongoRepository;
 import com.judicator.gateway.modules.identity.service.auth.SessionService;
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -18,7 +18,6 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -29,34 +28,44 @@ public class SessionServiceImpl implements SessionService {
   @Value("${jwt.refreshable-duration}")
   long refreshableDurationSeconds;
 
-  final SessionRepository sessionRepository;
+  final SessionMongoRepository sessionMongoRepository;
   final SessionAuthorityCacheService sessionAuthorityCacheService;
 
   @Override
-  @Transactional
-  public Session createSession(User user) {
-    Session session = new Session();
-    session.setUser(user);
-    session.setExpiredAt(LocalDateTime.now().plusSeconds(refreshableDurationSeconds));
-    session.setRefreshJti(UuidV7.random());
-    session.setRevokedAt(null);
-    return sessionRepository.save(session);
+  public SessionDoc createSession(User user) {
+    SessionDoc doc =
+        SessionDoc.builder()
+            .userId(user.getId())
+            .tenantId(user.getTenant().getId())
+            .refreshJti(UuidV7.random().toString())
+            .revokedAt(null)
+            .expiredAt(Instant.now().plusSeconds(refreshableDurationSeconds))
+            .build();
+    return sessionMongoRepository.save(doc);
   }
 
   @Override
-  @Transactional
-  public UUID rotateRefreshJti(UUID sessionId, UUID oldJti) {
-    UUID newJti = UuidV7.random();
-    int updated = sessionRepository.rotateRefreshJti(sessionId, oldJti, newJti);
-    if (updated != 1) {
+  public String rotateRefreshJti(String sessionId, String oldJti) {
+    SessionDoc doc =
+        sessionMongoRepository
+            .findByIdAndRevokedAtIsNull(sessionId)
+            .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
+
+    if (!oldJti.equals(doc.getRefreshJti())) {
       throw new ApiException(ErrorCode.UNAUTHENTICATED);
     }
+    if (doc.getExpiredAt() == null || doc.getExpiredAt().isBefore(Instant.now())) {
+      throw new ApiException(ErrorCode.UNAUTHENTICATED);
+    }
+
+    String newJti = UuidV7.random().toString();
+    doc.setRefreshJti(newJti);
+    sessionMongoRepository.save(doc);
     return newJti;
   }
 
   @Override
-  @Transactional
-  public void revoke(UUID sessionId, Duration accessTtl) {
+  public void revoke(String sessionId, Duration accessTtl) {
     if (sessionId == null) {
       throw new ApiException(ErrorCode.UNAUTHENTICATED);
     }
@@ -64,27 +73,30 @@ public class SessionServiceImpl implements SessionService {
   }
 
   @Override
-  @Transactional
-  public void revoke(UUID sessionId, UUID userId, Duration accessTtl) {
+  public void revoke(String sessionId, UUID userId, Duration accessTtl) {
     if (sessionId == null || userId == null) {
       throw new ApiException(ErrorCode.UNAUTHENTICATED);
     }
     revokeSession(sessionId, userId, accessTtl);
   }
 
-  private void revokeSession(UUID sessionId, UUID userId, Duration accessTtl) {
+  private void revokeSession(String sessionId, UUID userId, Duration accessTtl) {
     if (accessTtl == null || accessTtl.isZero() || accessTtl.isNegative()) {
       accessTtl = Duration.ofSeconds(1);
     }
 
-    LocalDateTime now = LocalDateTime.now();
-    int updated =
-        userId == null
-            ? sessionRepository.revokeIfNotRevoked(sessionId, now)
-            : sessionRepository.revokeIfNotRevokedByUser(sessionId, userId, now);
-    if (updated != 1) {
+    SessionDoc doc =
+        sessionMongoRepository
+            .findByIdAndRevokedAtIsNull(sessionId)
+            .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
+
+    // Ràng buộc đúng chủ session để tránh revoke nhầm user
+    if (userId != null && !userId.equals(doc.getUserId())) {
       throw new ApiException(ErrorCode.UNAUTHENTICATED);
     }
+
+    doc.setRevokedAt(Instant.now());
+    sessionMongoRepository.save(doc);
 
     try {
       sessionAuthorityCacheService.markRevoked(sessionId, accessTtl);
@@ -96,21 +108,22 @@ public class SessionServiceImpl implements SessionService {
   }
 
   @Override
-  @Transactional
   public void revokeAll(UUID userId) {
-    LocalDateTime now = LocalDateTime.now();
-    List<UUID> sessionIds = sessionRepository.findActiveSessionIdsByUserId(userId, now);
-
-    sessionRepository.revokeAllActiveByUserId(userId, now);
+    Instant now = Instant.now();
+    List<SessionDoc> activeSessions =
+        sessionMongoRepository.findByUserIdAndRevokedAtIsNullAndExpiredAtAfter(userId, now);
 
     Duration accessTtl = Duration.ofMinutes(15);
-    for (UUID sid : sessionIds) {
+    for (SessionDoc doc : activeSessions) {
+      doc.setRevokedAt(now);
+      sessionMongoRepository.save(doc);
+
       try {
-        sessionAuthorityCacheService.markRevoked(sid, accessTtl);
-        sessionAuthorityCacheService.clearAuthz(sid);
-        sessionAuthorityCacheService.clearActive(sid);
+        sessionAuthorityCacheService.markRevoked(doc.getId(), accessTtl);
+        sessionAuthorityCacheService.clearAuthz(doc.getId());
+        sessionAuthorityCacheService.clearActive(doc.getId());
       } catch (Exception e) {
-        log.warn("RevokeAll redis best-effort failed sessionId={}", sid, e);
+        log.warn("RevokeAll redis best-effort failed sessionId={}", doc.getId(), e);
       }
     }
   }

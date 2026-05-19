@@ -3,10 +3,10 @@ package com.judicator.gateway.common.security.config;
 import com.judicator.gateway.common.exception.ApiException;
 import com.judicator.gateway.common.exception.ErrorCode;
 import com.judicator.gateway.infrastructure.cached.redis.service.SessionAuthorityCacheService;
-import com.judicator.gateway.modules.identity.repository.SessionRepository;
+import com.judicator.gateway.modules.identity.document.SessionDoc;
+import com.judicator.gateway.modules.identity.repository.mongo.SessionMongoRepository;
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.util.UUID;
+import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -19,12 +19,12 @@ import org.springframework.stereotype.Service;
 @FieldDefaults(makeFinal = true, level = AccessLevel.PRIVATE)
 public class SessionGuardService {
 
-  SessionRepository sessionRepository;
+  SessionMongoRepository sessionMongoRepository;
   SessionAuthorityCacheService sessionAuthorityCacheService;
 
   static final Duration ACTIVE_TTL = Duration.ofSeconds(60);
 
-  public void ensureActive(UUID sessionId, Duration jwtTtl) {
+  public void ensureActive(String sessionId, Duration jwtTtl) {
     if (sessionId == null) {
       throw new ApiException(ErrorCode.UNAUTHENTICATED);
     }
@@ -50,8 +50,10 @@ public class SessionGuardService {
       log.error("Redis gặp sự cố ở Cửa 2 cho sessionId={}", sessionId, e);
     }
 
-    log.debug("Cache Miss hoặc Redis sập -> Tiến hành kiểm tra DB cho Session: {}", sessionId);
-    boolean active = sessionRepository.isSessionActive(sessionId, LocalDateTime.now());
+    log.debug("Cache Miss hoặc Redis sập -> Tiến hành kiểm tra MongoDB cho Session: {}", sessionId);
+    SessionDoc doc = sessionMongoRepository.findByIdAndRevokedAtIsNull(sessionId).orElse(null);
+    boolean active =
+        doc != null && doc.getExpiredAt() != null && doc.getExpiredAt().isAfter(Instant.now());
 
     if (!active) {
       try {

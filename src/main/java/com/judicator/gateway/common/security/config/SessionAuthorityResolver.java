@@ -39,7 +39,7 @@ public class SessionAuthorityResolver {
   // At every request, get jwtExp --> calculate ttl --> put redis
   // When jwtExp cannot used --> redis auto revoke (next request will get from DB)
 
-  public SessionAuthzCache resolve(UUID sessionId, UUID userId, Instant jwtExp) {
+  public SessionAuthzCache resolve(String sessionId, UUID userId, Instant jwtExp) {
     // 1. Dynamic TTL Calculation: Align Redis TTL with JWT Expiration
     Duration ttl = Duration.between(Instant.now(), jwtExp);
     if (ttl.isNegative() || ttl.isZero()) {

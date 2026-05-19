@@ -9,7 +9,7 @@ import lombok.Getter;
 public class TokenRequest {
   private UUID userId;
   private UUID tenantId;
-  private UUID sessionId;
+  private String sessionId;
   private String subject;
-  private UUID refreshJti;
+  private String refreshJti;
 }
