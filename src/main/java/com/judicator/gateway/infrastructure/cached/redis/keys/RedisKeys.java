@@ -16,6 +16,9 @@ public final class RedisKeys {
   private static final String SESS_REVOKED = PREFIX + ":sess:revoked:";
   private static final String SESS_ACTIVE = PREFIX + ":sess:active:";
   private static final String TENANT_DETAIL = PREFIX + ":tenant:detail:%s";
+  private static final String EXAM_DETAIL = PREFIX + ":tenant:%s:exam:detail:%s";
+  private static final String EXAM_LIST = PREFIX + ":tenant:%s:exam:list";
+  private static final String EXAM_PATTERN = PREFIX + ":tenant:%s:exam:*";
 
   private static final String RATE_LIMIT_USER = PREFIX + ":ratelimit:user:";
   private static final String RATE_LIMIT_LOGIN = PREFIX + ":ratelimit:login:";
@@ -71,5 +74,21 @@ public final class RedisKeys {
   public static String tenantPattern(UUID tenantId) {
     requireNonBlank(tenantId, "tenantId");
     return PREFIX + ":tenant:" + tenantId + ":*";
+  }
+
+  public static String examDetail(UUID tenantId, UUID examId) {
+    requireNonBlank(tenantId, "tenantId");
+    requireNonBlank(examId, "examId");
+    return String.format(EXAM_DETAIL, tenantId, examId);
+  }
+
+  public static String examList(UUID tenantId) {
+    requireNonBlank(tenantId, "tenantId");
+    return String.format(EXAM_LIST, tenantId);
+  }
+
+  public static String examPattern(UUID tenantId) {
+    requireNonBlank(tenantId, "tenantId");
+    return String.format(EXAM_PATTERN, tenantId);
   }
 }
