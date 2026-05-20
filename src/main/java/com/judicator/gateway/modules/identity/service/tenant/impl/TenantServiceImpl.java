@@ -1,5 +1,6 @@
 package com.judicator.gateway.modules.identity.service.tenant.impl;
 
+import com.judicator.gateway.common.events.TenantSuspendedEvent;
 import com.judicator.gateway.common.exception.ApiException;
 import com.judicator.gateway.common.exception.ErrorCode;
 import com.judicator.gateway.infrastructure.cached.redis.service.TenantCacheService;
@@ -10,11 +11,13 @@ import com.judicator.gateway.modules.identity.enumType.TenantStatus;
 import com.judicator.gateway.modules.identity.mapper.TenantMapper;
 import com.judicator.gateway.modules.identity.repository.jpa.TenantRepository;
 import com.judicator.gateway.modules.identity.service.tenant.TenantService;
+import java.time.Instant;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +30,7 @@ public class TenantServiceImpl implements TenantService {
   TenantRepository tenantRepository;
   TenantCacheService tenantCacheService;
   TenantMapper tenantMapper;
+  ApplicationEventPublisher eventPublisher;
 
   @Override
   @Transactional
@@ -79,6 +83,12 @@ public class TenantServiceImpl implements TenantService {
   }
 
   @Override
+  public java.util.List<TenantResponse> getAllTenants() {
+    log.debug("Yêu cầu lấy danh sách tất cả Tenant");
+    return tenantRepository.findAll().stream().map(tenantMapper::toResponse).toList();
+  }
+
+  @Override
   @Transactional
   public void suspendTenant(UUID id) {
     log.info("Nhận yêu cầu đình chỉ (Suspend) Tenant ID: {}", id);
@@ -97,6 +107,12 @@ public class TenantServiceImpl implements TenantService {
 
     tenantCacheService.evictTenantData(id);
     log.info("Đã đình chỉ thành công và dọn sạch Cache/Session của Tenant ID: {}", id);
+
+    // Publish domain event so downstream modules (e.g. exam) can react asynchronously.
+    // Using @TransactionalEventListener(phase = AFTER_COMMIT) on the consumer side ensures
+    // the event is only processed after this transaction has successfully committed.
+    eventPublisher.publishEvent(new TenantSuspendedEvent(id, Instant.now()));
+    log.info("[Event] Đã phát sự kiện TenantSuspendedEvent cho Tenant ID: {}", id);
   }
 
   @Override
@@ -118,5 +134,10 @@ public class TenantServiceImpl implements TenantService {
 
     tenantCacheService.evictTenantData(id);
     log.info("Xóa mềm thành công và đã xóa toàn bộ Cache của Tenant ID: {}", id);
+
+    // Tenant deletion is a superset of suspension from the exam module's perspective —
+    // all active exams for this tenant must be closed regardless of the reason.
+    eventPublisher.publishEvent(new TenantSuspendedEvent(id, Instant.now()));
+    log.info("[Event] Đã phát sự kiện TenantSuspendedEvent (do xóa) cho Tenant ID: {}", id);
   }
 }

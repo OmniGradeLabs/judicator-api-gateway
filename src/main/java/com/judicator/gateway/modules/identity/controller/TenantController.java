@@ -9,19 +9,22 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -33,9 +36,39 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(
     name = "Tenant Management",
     description = "Quản lý khách hàng (Tenant) - Dành cho System Admin")
+@SecurityRequirement(name = "bearerAuth")
+@PreAuthorize("hasRole('SYSTEM_ADMIN')")
 public class TenantController {
 
   TenantService tenantService;
+
+  @Operation(summary = "Lấy danh sách tất cả khách hàng (Tenants)")
+  @ApiResponses(
+      value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Lấy danh sách thành công",
+            content = @Content(schema = @Schema(implementation = TenantResponse.class))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "401",
+            description = "Access token thiếu hoặc hết hạn",
+            content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "403",
+            description = "User hiện tại không có role SYSTEM_ADMIN",
+            content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+      })
+  @GetMapping
+  public ResponseEntity<ApiResponse<List<TenantResponse>>> getAllTenants() {
+    return ResponseEntity.ok(
+        ApiResponse.<List<TenantResponse>>builder()
+            .code(ErrorCode.SUCCESS.getCode())
+            .message("Lấy danh sách thành công")
+            .result(tenantService.getAllTenants())
+            .timestamp(Instant.now())
+            .path("/tenants")
+            .build());
+  }
 
   @Operation(
       summary = "Tạo mới khách hàng (Tenant)",
@@ -50,11 +83,14 @@ public class TenantController {
             content = @Content(schema = @Schema(implementation = TenantResponse.class))),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "400",
-            description = "Dữ liệu không hợp lệ / Trùng Slug",
+            description = "Dữ liệu không hợp lệ",
+            content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "409",
+            description = "Trùng Slug",
             content = @Content(schema = @Schema(implementation = ApiResponse.class)))
       })
   @PostMapping
-  // @RateLimit(limit = 5, duration = 30, type = RateLimit.Type.USER_ID)
   public ResponseEntity<ApiResponse<TenantResponse>> createTenant(
       @Valid @RequestBody TenantCreationRequest request) {
     return ResponseEntity.ok(
@@ -63,12 +99,23 @@ public class TenantController {
             .message("Tạo khách hàng thành công")
             .result(tenantService.createTenant(request))
             .timestamp(Instant.now())
+            .path("/tenants")
             .build());
   }
 
   @Operation(summary = "Lấy thông tin chi tiết của Tenant")
+  @ApiResponses(
+      value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Lấy thông tin thành công",
+            content = @Content(schema = @Schema(implementation = TenantResponse.class))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "404",
+            description = "Không tìm thấy Tenant",
+            content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+      })
   @GetMapping("/{id}")
-  // @RateLimit(limit = 20, duration = 60, type = RateLimit.Type.USER_ID)
   public ResponseEntity<ApiResponse<TenantResponse>> getTenant(@PathVariable UUID id) {
     return ResponseEntity.ok(
         ApiResponse.<TenantResponse>builder()
@@ -76,6 +123,7 @@ public class TenantController {
             .message("Lấy thông tin thành công")
             .result(tenantService.getTenantById(id))
             .timestamp(Instant.now())
+            .path("/tenants/" + id)
             .build());
   }
 
@@ -84,8 +132,18 @@ public class TenantController {
       description =
           "Tạm dừng hoạt động của Tenant. Hệ thống sẽ tự động kick toàn bộ User thuộc"
               + " Tenant này khỏi Redis.")
-  @PatchMapping("/{id}/suspend")
-  // @RateLimit(limit = 5, duration = 30, type = RateLimit.Type.USER_ID)
+  @ApiResponses(
+      value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Đình chỉ thành công",
+            content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "404",
+            description = "Không tìm thấy Tenant",
+            content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+      })
+  @PutMapping("/{id}/suspend")
   public ResponseEntity<ApiResponse<Void>> suspendTenant(@PathVariable UUID id) {
     tenantService.suspendTenant(id);
     return ResponseEntity.ok(
@@ -93,12 +151,23 @@ public class TenantController {
             .code(ErrorCode.SUCCESS.getCode())
             .message("Đã đình chỉ hoạt động khách hàng")
             .timestamp(Instant.now())
+            .path("/tenants/" + id + "/suspend")
             .build());
   }
 
   @Operation(summary = "Xóa mềm Tenant")
+  @ApiResponses(
+      value = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "200",
+            description = "Xóa thành công",
+            content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+            responseCode = "404",
+            description = "Không tìm thấy Tenant",
+            content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+      })
   @DeleteMapping("/{id}")
-  // @RateLimit(limit = 5, duration = 30, type = RateLimit.Type.USER_ID)
   public ResponseEntity<ApiResponse<Void>> deleteTenant(@PathVariable UUID id) {
     tenantService.deleteTenant(id);
     return ResponseEntity.ok(
@@ -106,6 +175,7 @@ public class TenantController {
             .code(ErrorCode.SUCCESS.getCode())
             .message("Đã xóa khách hàng")
             .timestamp(Instant.now())
+            .path("/tenants/" + id)
             .build());
   }
 }
