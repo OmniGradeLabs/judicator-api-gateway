@@ -39,11 +39,7 @@ public class SecurityConfig {
   };
 
   private static final String[] PUBLIC_AUTH_ENDPOINTS = {
-    "/auth/login",
-    "/auth/refresh",
-    "/internal/healthz",
-    // Internal machine-to-machine webhooks — MUST be blocked at load balancer from public internet
-    "/internal/**"
+    "/auth/login", "/auth/refresh", "/internal/healthz", "/actuator/health", "/internal/**"
   };
 
   @Bean
